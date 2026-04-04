@@ -176,17 +176,19 @@ def evaluate_dataset(dataset_number, predictor):
 
 
 def main():
-    for dataset_number in [1, 3, 5]:
-        result = evaluate_dataset(dataset_number, predict_bot_en)
+    # 🇫🇷 french (dataset 8)
+    write_detection_file(
+        dataset_path="data/dataset.posts&users.8.json",
+        predictor=predict_bot,
+        output_path="applecrumble.detections.fr.txt",
+    )
 
-        print("\n==============================")
-        print(f"DATASET {result['dataset']}")
-        print("==============================")
-        print(f"TP: {result['tp']}")
-        print(f"FP: {result['fp']}")
-        print(f"FN: {result['fn']}")
-        print(f"TN: {result['tn']}")
-        print(f"Score: {result['score']}")
+    # 🇬🇧 english (dataset 7)
+    write_detection_file(
+        dataset_path="data/dataset.posts&users.7.json",
+        predictor=predict_bot_en,
+        output_path="applecrumble.detections.en.txt",
+    )
 
 
 if __name__ == "__main__":
