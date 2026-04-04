@@ -1,155 +1,154 @@
+# 🍏 AppleCrumble — Bot or Not 2026
 
-# AppleCrumble - Bot or Not
+## 📌 Overview
 
-## Team
-AppleCrumble
+This project implements a **rule-based bot detection system** for the Bot or Not 2026 competition.
 
-## Overview
+The goal is to classify users as bots or humans based on their posting behavior.
+The approach prioritizes **minimizing false positives**, as required by the competition scoring:
 
-This project implements a rule-based system to detect automated accounts (bots) on social media using user-level features extracted from their posts.
-
-The model is designed to minimize false positives due to the competition scoring rule.
-
----
-
-## How the model works
-
-The system processes the data in three steps:
-
-### 1. Group posts by user
-
-All posts are grouped by `author_id` so each user is analyzed based on their full activity.
-
-### 2. Feature extraction
-
-For each user, the following features are computed:
-
-- num_posts: number of posts  
-- avg_text_length: average post length  
-- link_ratio: proportion of posts containing links (`https://t.co/`)  
-- hashtag_ratio: proportion of posts containing hashtags (`#`)  
-- mention_ratio: proportion of posts containing mentions (`@mention`)  
-- unique_text_ratio: proportion of unique posts  
-- repeated_ratio: proportion of repeated posts  
-
-These features capture user behavior and interaction patterns.
-
-### 3. Bot detection rules
-
-The model uses rule-based heuristics.
-
-#### French model (predict_bot)
-
-In the French datasets, bots tend to:
-
-- use many hashtags  
-- have structured posting behavior  
-- show low interaction  
-
-The model detects bots using:
-
-- high hashtag ratio with sufficient activity  
-- link usage combined with low mentions  
-- filtering of obvious human profiles  
-
-#### English model (predict_bot_en)
-
-In the English datasets:
-
-- hashtags are less informative  
-- many human users share links  
-- interaction (mentions) is more relevant  
-
-The English model is more conservative and detects only clear bots using:
-
-- extreme hashtag usage  
-- specific link patterns with very low interaction  
-- protection of human-like accounts  
-
----
-
-## Evaluation
-
-The model is evaluated using the competition metric:
-
+```
 score = (2 × TP) − (6 × FP) − (2 × FN)
-
-False positives are heavily penalized, so the model prioritizes precision.
+```
 
 ---
 
-## How to run the model
+## 🧠 Approach
 
-### French
+The system analyzes users by aggregating their posts and extracting behavioral features.
 
-In main.py, set:
+### Extracted Features
 
-```python
-for dataset_number in [2, 4, 6]:
-    result = evaluate_dataset(dataset_number, predict_bot)
+* `num_posts` — total number of posts per user
+* `avg_text_length` — average length of posts
+* `link_ratio` — proportion of posts containing links
+* `hashtag_ratio` — proportion of posts containing hashtags
+* `mention_ratio` — proportion of posts containing mentions
+* `unique_text_ratio` — diversity of text
+* `repeated_ratio` — repetition of content
+
+---
+
+## 🌍 Language-Specific Models
+
+Two separate predictors are used:
+
+### 🇫🇷 French Model — `predict_bot`
+
+Designed to capture:
+
+* hashtag-heavy accounts
+* structured / repetitive content
+* moderate link usage
+
+### 🇬🇧 English Model — `predict_bot_en`
+
+More conservative to avoid false positives:
+
+* protects conversational users (mentions)
+* protects high-link, low-hashtag accounts
+* detects only strong bot patterns
+
+👉 This separation improves robustness since posting behavior differs between languages.
+
+---
+
+## 📂 Project Structure
+
+```
+applecrumble-bot-or-not/
+│
+├── data/
+│   ├── dataset.posts&users.X.json
+│   ├── dataset.bots.X.txt (training only)
+│
+├── main.py
+├── README.md
 ```
 
-Run:
+---
+
+## 🚀 How to Run (Final Submission)
+
+### 1. Place datasets
+
+Put the final datasets inside the `data/` folder:
+
+```
+data/dataset.posts&users.7.json   # English
+data/dataset.posts&users.8.json   # French
+```
+
+---
+
+### 2. Run the script
 
 ```
 python main.py
 ```
 
-### English
-
-In main.py, set:
-
-```python
-for dataset_number in [1, 3, 5]:
-    result = evaluate_dataset(dataset_number, predict_bot_en)
-```
-
-Run:
-
-```
-python main.py
-```
-
 ---
 
-## Generating submission files
+### 3. Output
 
-The function `write_detection_file(dataset_path, predictor, output_path)` generates the required output files.
+Two files will be generated:
+
+```
+applecrumble.detections.en.txt
+applecrumble.detections.fr.txt
+```
 
 Each file contains:
-- one user ID per line  
-- no additional formatting  
 
-### Example
+* one `user_id` per line
+* no headers
+* no extra formatting
+
+---
+
+## 🧪 Evaluation (Optional)
+
+To evaluate on training datasets:
 
 ```python
-write_detection_file(
-    dataset_path="data/final_fr.json",
-    predictor=predict_bot,
-    output_path="applecrumble.detections.fr.txt",
-)
+evaluate_dataset(dataset_number, predictor)
+```
 
-write_detection_file(
-    dataset_path="data/final_en.json",
-    predictor=predict_bot_en,
-    output_path="applecrumble.detections.en.txt",
-)
+Example:
+
+```python
+evaluate_dataset(1, predict_bot_en)
 ```
 
 ---
 
-## Final submission
+## ⚙️ Design Choices
 
-Submit:
-
-- applecrumble.detections.fr.txt  
-- applecrumble.detections.en.txt  
-- link to this repository  
+* Rule-based approach for full control over predictions
+* Conservative thresholds to reduce false positives
+* Separate models for French and English datasets
+* Robust data handling (`.get()`, regex detection)
 
 ---
 
-## Notes
+## 🔮 Possible Improvements
 
-- Separate models are used for French and English  
-- The approach is rule-based  
-- The model is optimized to reduce false positives  
+Future work could include:
+
+* counting exact number of hashtags and mentions per post
+* detecting repeated templates or structured content
+* analyzing variability of text length
+* incorporating lightweight ML models (e.g., decision trees)
+* improving detection of hybrid or semi-automated accounts
+
+---
+
+## 🙌 Final Notes
+
+This project was developed as part of the Bot or Not 2026 competition.
+
+The experience was both challenging and rewarding, especially in balancing detection performance with strict constraints on false positives.
+
+I would be very interested in continuing to improve this approach and further exploring bot detection techniques in future iterations.
+
+Thank you for the opportunity - this was a great experience 🚀
