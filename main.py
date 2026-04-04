@@ -133,7 +133,7 @@ def compute_score(tp, fp, fn):
     return (2 * tp) - (6 * fp) - (2 * fn)
 
 
-def evaluate_dataset(dataset_number):
+def evaluate_dataset(dataset_number, predictor):
     dataset_path = f"data/dataset.posts&users.{dataset_number}.json"
     bots_path = f"data/dataset.bots.{dataset_number}.txt"
 
@@ -146,7 +146,7 @@ def evaluate_dataset(dataset_number):
     for user_id, posts in posts_by_user.items():
         features = extract_user_features(user_id, posts)
         is_bot = user_id in bot_ids
-        predicted_bot = predict_bot_en(features)
+        predicted_bot = predictor(features)
 
         if is_bot and predicted_bot:
             tp += 1
@@ -171,7 +171,7 @@ def evaluate_dataset(dataset_number):
 
 def main():
     for dataset_number in [1, 3, 5]:
-        result = evaluate_dataset(dataset_number)
+        result = evaluate_dataset(dataset_number, predict_bot_en)
 
         print("\n==============================")
         print(f"DATASET {result['dataset']}")
