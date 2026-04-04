@@ -1,6 +1,4 @@
 import json
-from collections import Counter
-from datetime import datetime
 from statistics import mean
 
 
@@ -37,16 +35,6 @@ def extract_user_features(user_id, posts):
     unique_texts = len(set(texts))
     total_posts = len(texts)
 
-    timestamps_by_minute = []
-
-    for post in posts:
-        dt = datetime.fromisoformat(post["created_at"].replace("Z", "+00:00"))
-        minute_key = dt.strftime("%Y-%m-%d %H:%M")
-        timestamps_by_minute.append(minute_key)
-
-    minute_counts = Counter(timestamps_by_minute)
-    max_posts_same_minute = max(minute_counts.values()) if minute_counts else 0
-
     return {
         "user_id": user_id,
         "num_posts": total_posts,
@@ -56,88 +44,96 @@ def extract_user_features(user_id, posts):
         "mention_ratio": round(num_mentions / total_posts, 3) if total_posts else 0,
         "unique_text_ratio": round(unique_texts / total_posts, 3) if total_posts else 0,
         "repeated_ratio": round(1 - (unique_texts / total_posts), 3) if total_posts else 0,
-        "max_posts_same_minute": max_posts_same_minute,
     }
 
 
-def is_obvious_human(
-    features,
-    human_link_posts,
-    human_link_ratio,
-    human_hashtag_max,
-    low_volume_posts,
-    low_volume_hashtag,
-):
+def is_obvious_human(features):
     human_links = (
-        features["num_posts"] >= human_link_posts
-        and features["link_ratio"] >= human_link_ratio
-        and features["hashtag_ratio"] <= human_hashtag_max
+        features["num_posts"] >= 40
+        and features["link_ratio"] >= 0.8
+        and features["hashtag_ratio"] <= 0.05
     )
 
     human_low_volume_hashtag = (
-        features["num_posts"] <= low_volume_posts
-        and features["hashtag_ratio"] >= low_volume_hashtag
+        features["num_posts"] <= 20
+        and features["hashtag_ratio"] >= 0.8
     )
 
     return human_links or human_low_volume_hashtag
 
 
-def predict_bot(
-    features,
-    human_link_posts,
-    human_link_ratio,
-    human_hashtag_max,
-    low_volume_posts,
-    low_volume_hashtag,
-    bot_hashtag_min,
-    bot_hashtag_posts,
-    bot_hashtag_mention_max,
-    bot_link_posts,
-    bot_link_min,
-    bot_link_max,
-    bot_link_hashtag_min,
-    bot_link_mention_max,
-    bot_burst_posts,
-    bot_burst_minute_max,
-    bot_burst_mention_max,
-):
-    if is_obvious_human(
-        features,
-        human_link_posts,
-        human_link_ratio,
-        human_hashtag_max,
-        low_volume_posts,
-        low_volume_hashtag,
+def predict_bot(features):
+    if is_obvious_human(features):
+        return False
+
+    bot_hashtag = (
+        features["hashtag_ratio"] >= 0.75
+        and features["num_posts"] >= 30
+        and features["mention_ratio"] <= 0.1
+    )
+
+    bot_links = (
+        features["num_posts"] >= 30
+        and 0.50 <= features["link_ratio"] <= 0.70
+        and features["hashtag_ratio"] >= 0.05
+        and features["mention_ratio"] <= 0.1
+    )
+
+    return bot_hashtag or bot_links
+
+
+def predict_bot_en(features):
+    if (
+        features["mention_ratio"] >= 0.15
+        or (
+            features["num_posts"] >= 40
+            and features["link_ratio"] >= 0.80
+            and features["hashtag_ratio"] <= 0.02
+        )
     ):
         return False
 
     bot_hashtag = (
-        features["hashtag_ratio"] >= bot_hashtag_min
-        and features["num_posts"] >= bot_hashtag_posts
-        and features["mention_ratio"] <= bot_hashtag_mention_max
+        features["hashtag_ratio"] >= 0.90
+        and features["num_posts"] >= 20
+        and features["mention_ratio"] <= 0.10
     )
 
     bot_links = (
-        features["num_posts"] >= bot_link_posts
-        and bot_link_min <= features["link_ratio"] <= bot_link_max
-        and features["hashtag_ratio"] >= bot_link_hashtag_min
-        and features["mention_ratio"] <= bot_link_mention_max
+        features["num_posts"] >= 40
+        and 0.50 <= features["link_ratio"] <= 0.65
+        and features["mention_ratio"] <= 0.03
+        and features["hashtag_ratio"] >= 0.02
     )
 
-    bot_timeburst = (
-        features["num_posts"] >= bot_burst_posts
-        and features["max_posts_same_minute"] >= bot_burst_minute_max
-        and features["mention_ratio"] <= bot_burst_mention_max
-    )
+    return bot_hashtag or bot_links
 
-    return bot_hashtag or bot_links or bot_timeburst
+def write_detection_file(dataset_path, predictor, output_path):
+    data = load_dataset(dataset_path)
+    posts_by_user = group_posts_by_user(data["posts"])
+
+    predicted_bot_ids = []
+
+    for user_id, posts in posts_by_user.items():
+        features = extract_user_features(user_id, posts)
+
+        if predictor(features):
+            predicted_bot_ids.append(user_id)
+
+    predicted_bot_ids.sort()
+
+    with open(output_path, "w", encoding="utf-8") as file:
+        for user_id in predicted_bot_ids:
+            file.write(f"{user_id}\n")
+
+    print(f"File created: {output_path}")
 
 
 def compute_score(tp, fp, fn):
     return (2 * tp) - (6 * fp) - (2 * fn)
 
 
-def prepare_dataset(dataset_number):
+def evaluate_dataset(dataset_number):
     dataset_path = f"data/dataset.posts&users.{dataset_number}.json"
     bots_path = f"data/dataset.bots.{dataset_number}.txt"
 
@@ -145,123 +141,46 @@ def prepare_dataset(dataset_number):
     bot_ids = load_bot_ids(bots_path)
     posts_by_user = group_posts_by_user(data["posts"])
 
-    prepared_rows = []
+    tp = fp = fn = tn = 0
 
     for user_id, posts in posts_by_user.items():
         features = extract_user_features(user_id, posts)
-        features["is_bot"] = user_id in bot_ids
-        prepared_rows.append(features)
+        is_bot = user_id in bot_ids
+        predicted_bot = predict_bot_en(features)
 
-    return prepared_rows
-
-
-def evaluate_prepared_dataset(rows, params):
-    tp = fp = fn = tn = 0
-
-    for row in rows:
-        predicted_bot = predict_bot(row, **params)
-
-        if row["is_bot"] and predicted_bot:
+        if is_bot and predicted_bot:
             tp += 1
-        elif not row["is_bot"] and predicted_bot:
+        elif not is_bot and predicted_bot:
             fp += 1
-        elif row["is_bot"] and not predicted_bot:
+        elif is_bot and not predicted_bot:
             fn += 1
         else:
             tn += 1
 
+    score = compute_score(tp, fp, fn)
+
     return {
+        "dataset": dataset_number,
         "tp": tp,
         "fp": fp,
         "fn": fn,
         "tn": tn,
-        "score": compute_score(tp, fp, fn),
+        "score": score,
     }
 
 
 def main():
-    dataset_numbers = [2, 4, 6]
+    for dataset_number in [1, 3, 5]:
+        result = evaluate_dataset(dataset_number)
 
-    print("Loading and preparing datasets once...")
-    prepared_datasets = {
-        dataset_number: prepare_dataset(dataset_number)
-        for dataset_number in dataset_numbers
-    }
-    print("Datasets ready.\n")
-
-    all_results = []
-
-    for human_link_ratio in [0.80, 0.85]:
-        for bot_hashtag_min in [0.75, 0.80]:
-            for bot_hashtag_posts in [25, 30]:
-                for bot_link_posts in [25, 30]:
-                    for bot_link_min in [0.45, 0.50]:
-                        for bot_link_hashtag_min in [0.03, 0.05]:
-                            for bot_burst_posts in [15, 20, 25]:
-                                for bot_burst_minute_max in [2, 3]:
-                                    params = {
-                                        "human_link_posts": 40,
-                                        "human_link_ratio": human_link_ratio,
-                                        "human_hashtag_max": 0.05,
-                                        "low_volume_posts": 20,
-                                        "low_volume_hashtag": 0.80,
-                                        "bot_hashtag_min": bot_hashtag_min,
-                                        "bot_hashtag_posts": bot_hashtag_posts,
-                                        "bot_hashtag_mention_max": 0.10,
-                                        "bot_link_posts": bot_link_posts,
-                                        "bot_link_min": bot_link_min,
-                                        "bot_link_max": 0.70,
-                                        "bot_link_hashtag_min": bot_link_hashtag_min,
-                                        "bot_link_mention_max": 0.10,
-                                        "bot_burst_posts": bot_burst_posts,
-                                        "bot_burst_minute_max": bot_burst_minute_max,
-                                        "bot_burst_mention_max": 0.10,
-                                    }
-
-                                    dataset_results = []
-                                    total_score = 0
-                                    total_fp = 0
-
-                                    for dataset_number in dataset_numbers:
-                                        result = evaluate_prepared_dataset(
-                                            prepared_datasets[dataset_number],
-                                            params,
-                                        )
-                                        result["dataset"] = dataset_number
-                                        dataset_results.append(result)
-                                        total_score += result["score"]
-                                        total_fp += result["fp"]
-
-                                    avg_score = total_score / len(dataset_numbers)
-
-                                    all_results.append({
-                                        "params": params,
-                                        "dataset_results": dataset_results,
-                                        "total_score": total_score,
-                                        "avg_score": avg_score,
-                                        "total_fp": total_fp,
-                                    })
-
-    all_results.sort(
-        key=lambda x: (x["total_score"], -x["total_fp"]),
-        reverse=True
-    )
-
-    print("TOP 5 CONFIGURATIONS\n")
-
-    for i, result in enumerate(all_results[:5], start=1):
-        print(f"=== CONFIG {i} ===")
-        print("params:", result["params"])
-        print("total_score:", result["total_score"])
-        print("avg_score:", round(result["avg_score"], 2))
-        print("total_fp:", result["total_fp"])
-
-        for r in result["dataset_results"]:
-            print(
-                f"dataset {r['dataset']} -> "
-                f"TP={r['tp']} FP={r['fp']} FN={r['fn']} TN={r['tn']} score={r['score']}"
-            )
-        print()
+        print("\n==============================")
+        print(f"DATASET {result['dataset']}")
+        print("==============================")
+        print(f"TP: {result['tp']}")
+        print(f"FP: {result['fp']}")
+        print(f"FN: {result['fn']}")
+        print(f"TN: {result['tn']}")
+        print(f"Score: {result['score']}")
 
 
 if __name__ == "__main__":
