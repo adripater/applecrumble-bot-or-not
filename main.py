@@ -1,4 +1,5 @@
 import json
+import re
 from statistics import mean
 
 
@@ -16,7 +17,10 @@ def group_posts_by_user(posts):
     posts_by_user = {}
 
     for post in posts:
-        user_id = post["author_id"]
+        user_id = post.get("author_id")
+        if user_id is None:
+            continue
+        user_id = str(user_id)
         if user_id not in posts_by_user:
             posts_by_user[user_id] = []
         posts_by_user[user_id].append(post)
@@ -25,12 +29,12 @@ def group_posts_by_user(posts):
 
 
 def extract_user_features(user_id, posts):
-    texts = [post["text"] for post in posts]
+    texts = [post.get("text", "") for post in posts]
     lengths = [len(text) for text in texts]
 
-    num_links = sum("https://t.co/" in text for text in texts)
+    num_links = sum(bool(re.search(r"https?://", text)) for text in texts)
     num_hashtags = sum("#" in text for text in texts)
-    num_mentions = sum("@mention" in text for text in texts)
+    num_mentions = sum(bool(re.search(r"@[A-Za-z0-9_]+", text)) for text in texts)
 
     unique_texts = len(set(texts))
     total_posts = len(texts)
@@ -110,7 +114,8 @@ def predict_bot_en(features):
 
 def write_detection_file(dataset_path, predictor, output_path):
     data = load_dataset(dataset_path)
-    posts_by_user = group_posts_by_user(data["posts"])
+    posts = data.get("posts", [])
+    posts_by_user = group_posts_by_user(posts)
 
     predicted_bot_ids = []
 
@@ -118,7 +123,7 @@ def write_detection_file(dataset_path, predictor, output_path):
         features = extract_user_features(user_id, posts)
 
         if predictor(features):
-            predicted_bot_ids.append(user_id)
+            predicted_bot_ids.append(str(user_id))
 
     predicted_bot_ids.sort()
 
@@ -139,7 +144,8 @@ def evaluate_dataset(dataset_number, predictor):
 
     data = load_dataset(dataset_path)
     bot_ids = load_bot_ids(bots_path)
-    posts_by_user = group_posts_by_user(data["posts"])
+    posts = data.get("posts", [])
+    posts_by_user = group_posts_by_user(posts)
 
     tp = fp = fn = tn = 0
 
