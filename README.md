@@ -1,4 +1,4 @@
-# 🍏 AppleCrumble — Bot or Not 2026
+# 🍏 AppleCrumble - Bot or Not 2026
 
 ## 📌 Overview
 
